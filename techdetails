@@ -1,0 +1,403 @@
+Tech Stack (authoritative)
+
+Lang/Runtime: Python 3.11 (services), Node 20 (frontend)
+
+Orchestration: Apache Airflow 2.x
+
+OCR: Tesseract (on-prem) or AWS Textract (managed)
+
+NLP/LLM: Hugging Face (table & NER models), OpenAI-compatible LLM endpoint (for MD&A summarization/extraction)
+
+Parsing: pdfminer.six, PyMuPDF, Camelot/Tabula (tabular extraction ensemble)
+
+Storage: PostgreSQL 15 (structured), S3-compatible object store (raw docs), Redis (queues/cache)
+
+Graph DB: Neo4j 5.x
+
+ML: PyTorch 2.x, XGBoost, scikit-learn, PyG (PyTorch Geometric) for GNN
+
+API: FastAPI + Pydantic, Uvicorn/Gunicorn
+
+Frontend: React 18 + Vite + TypeScript + TailwindCSS + D3 (or Recharts)
+
+Auth & SSO: OAuth2/OIDC (Azure AD / Auth0)
+
+Deploy: Docker + Kubernetes (AKS/EKS), Helm
+
+Obs/Sec: Prometheus + Grafana, OpenTelemetry, Vault or AWS KMS, Snyk/Trivy image scans
+
+Docs: OpenAPI/Swagger, MkDocs
+
+CI/CD: GitHub Actions or GitLab CI (build → scan → test → helm deploy)
+
+External sample data & public APIs for testing
+
+EMMA (MSRB) – muni disclosures & trade docs: issuer filings and continuing disclosures (browse/download documents). 
+MSRB
++2
+MSRB
++2
+
+SEC EDGAR – real filings & XBRL (useful to validate the pipeline beyond munis): official REST APIs & developer docs. 
+SEC
++2
+SEC
++2
+
+U.S. Census – demographics & econ baselines (for geo factors): developers portal & API guide. 
+Census.gov
++2
+Census.gov
++2
+
+FRED – macro factors & rates (for spread/curve features): FRED API + Python client. 
+FRED
++2
+GitHub
++2
+
+Municipal credit research context (Merritt/Investortools & UChicago note; high-level): 
+Center for Municipal Finance
++2
+Cuppa UIC
++2
+
+Generic bond price/yield dataset (for sandboxing): government bonds dataset on Kaggle (non-muni but useful for pipeline tests). 
+Kaggle
+
+Note: EMMA offers documents and search; bulk RTRS trade feeds require licensing. For MVP tests, focus on disclosure PDFs + secondary public sources above.
+
+Jira Backlog (Epics → Stories)
+EPIC FGQ-0: Foundational Repo & Environments
+
+Goal: Project scaffolding, environments, CI/CD, secrets, quality gates.
+
+FGQ-0.1 | Monorepo bootstrap
+
+Desc: Initialize polyrepo or monorepo with services/ (ingestion, extraction, graph, model, api) and web/ for frontend. Add precommit hooks, lint, formatters.
+
+AC: make test runs unit tests; make build builds all Docker images; CODEOWNERS set.
+
+DoD: PR template + contribution guide live; OpenAPI stub published.
+
+FGQ-0.2 | CI/CD pipelines
+
+Desc: Build → test → scan → push images → helm deploy to dev.
+
+AC: On merge to main, images versioned; Trivy/Snyk scans pass.
+
+FGQ-0.3 | Secrets & configs
+
+Desc: Vault/KMS integration; per-env config; rotate keys.
+
+AC: No secrets in repo; kubectl smoke deploy works.
+
+EPIC FGQ-1: Ingestion Service (Airflow DAGs)
+
+FGQ-1.1 | EMMA filings crawler (disclosures only)
+
+Desc: Airflow DAG to fetch issuer continuing disclosures (PDFs) from EMMA search pages; store metadata in Postgres, PDFs in S3.
+
+Input: EMMA search parameters; issuer names/CUSIPs seed list.
+
+AC: Given 10 issuers, at least 50 PDFs downloaded, deduped, metadata captured (issuer, date, type, URL).
+
+Test data: EMMA site. 
+MSRB
+
+FGQ-1.2 | SEC EDGAR adapter (for non-muni validation)
+
+Desc: DAG to pull recent 10-K/10-Q filings via SEC API; save JSON/XBRL & PDFs to S3; index in Postgres.
+
+AC: ≥ 20 filings fetched with companyfacts endpoint sample parsed.
+
+Docs: SEC APIs. 
+SEC
++1
+
+FGQ-1.3 | Census & FRED loaders (aux features)
+
+Desc: Jobs to hydrate census demographics by county and FRED series (e.g., MUNI/Treasury ratios, unemployment).
+
+AC: Tables populated with 2–3 series and 5–10 variables; time-stamped. 
+Census.gov
++1
+
+FGQ-1.4 | File integrity & manifest
+
+Desc: Hash PDFs, maintain manifest table; retry policy & backoff; 429 handling.
+
+AC: Failed downloads retried; manifest shows SHA256 and source.
+
+EPIC FGQ-2: Extraction Engine (Hybrid parsers)
+
+FGQ-2.1 | PDF classification & chunking
+
+Desc: Classify docs by type (CAFR, budget, audit, notice). Chunk into sections (MD&A, statements, notes).
+
+AC: ≥90% accuracy on a labeled set of 100 docs.
+
+FGQ-2.2 | Table extraction ensemble
+
+Desc: Use Camelot/Tabula + heuristics; fall back to LLM for messy tables; return normalized JSON tables.
+
+AC: Extract 10 key fiscal metrics with ≥90% numeric accuracy across 50 docs (DSCR, fund balance ratio, pension liability %, revenue growth).
+
+FGQ-2.3 | Consistency validator
+
+Desc: Accounting checks: Assets ≈ Liabilities + Fund Balance; year-over-year deltas sanity; outlier detection.
+
+AC: Inconsistent statements flagged with reason codes.
+
+FGQ-2.4 | Text feature generator
+
+Desc: MD&A sentence embeddings; sentiment & topic tags (“pension,” “debt service,” “litigation”).
+
+AC: Entity/section provenance preserved (doc_id, page, span).
+
+EPIC FGQ-3: Knowledge Graph (Neo4j)
+
+FGQ-3.1 | ERD → Graph schema
+
+Desc: Implement nodes: Issuer, Obligor, Project, Security; edges: ISSUES, FINANCES, OWNS, GUARANTEES, OPERATES. Properties: time-series metrics, confidence, provenance.
+
+AC: Cypher migrations applied; example dataset loaded.
+
+FGQ-3.2 | Graph updater service
+
+Desc: Service to upsert nodes/edges from extraction output; idempotent; versioned snapshots.
+
+AC: Graph reflects latest ingestion; previous versions retrievable.
+
+FGQ-3.3 | Dependency weights
+
+Desc: Compute α_ij (dependency strength) from guarantees or pledged revenues; store on edges.
+
+AC: Weights appear in edge properties and feed ML.
+
+EPIC FGQ-4: Risk Scoring Engine (Fusion: Tabular + GNN + Text)
+
+FGQ-4.1 | Feature store (offline)
+
+Desc: Build parquet feature sets: financial ratios (tabular), graph embeddings (GNN prepass), text embeddings.
+
+AC: Reproducible features_v1 artifact with data dictionary.
+
+FGQ-4.2 | Base learner (XGBoost)
+
+Desc: Predict direction of rating drift or spread widening proxy; label using events windows.
+
+AC: ≥0.70 precision on direction vs. holdout; SHAP values generated.
+
+FGQ-4.3 | Graph layer (PyG)
+
+Desc: Train GraphSAGE/GAT to produce G_i embeddings; integrate dependency weights α_ij.
+
+AC: Ablation shows graph features improve AUC/precision by ≥5%.
+
+FGQ-4.4 | Text module
+
+Desc: Fine-tune lightweight model on paragraphs labeled “risk-raising” vs “neutral”; produce T_i.
+
+AC: F1 ≥ 0.75 on internal validation.
+
+FGQ-4.5 | Fusion & calibration
+
+Desc: Compute IRS_i = σ(w_f f(F_i) + w_g g(G_i) + w_t h(T_i)); map to 0–100; isotonic calibration.
+
+AC: Calibration plot within ±5% across deciles; confidence band computed.
+
+FGQ-4.6 | Reinforcement update
+
+Desc: Periodic weight nudges on realized events (rating changes, spread moves); guardrails to prevent drift.
+
+AC: Offline replay shows non-degrading or improved lead-time.
+
+EPIC FGQ-5: Explainability & Provenance
+
+FGQ-5.1 | Provenance ledger
+
+Desc: For each metric/feature, store (source_url, doc_id, page, extracted_value, parser, timestamp, sha256).
+
+AC: Clicking any driver in UI opens source doc page.
+
+FGQ-5.2 | Narrative generator
+
+Desc: Convert attributions into human-readable reasons:
+“Debt Service Coverage ↓15% (CAFR 2023 p.45) ⇒ Risk +3 pts.”
+
+AC: ≥90% narratives include at least one citation and driver delta.
+
+FGQ-5.3 | Audit export
+
+Desc: Produce PDF/JSON audit pack for any score at time t (inputs, features, contributions, model hash).
+
+AC: Pack generated within 5 seconds for a given issuer.
+
+EPIC FGQ-6: API & Contracts (FastAPI)
+
+FGQ-6.1 | REST endpoints
+
+Desc:
+
+GET /issuers/{id}/score → {score, trend, conf, drivers[]}
+
+GET /issuers/search?q= → list with facets
+
+GET /documents/{id} → stream PDF (from S3)
+
+GET /graph/{issuerId}/neighbors → dependency subgraph
+
+AC: OpenAPI published; auth via OIDC; rate-limited.
+
+FGQ-6.2 | Webhooks & batch
+
+Desc: POST /events/webhook for downstreams; nightly batch export (CSV/Parquet) to S3.
+
+AC: Event delivered with retries & signatures.
+
+EPIC FGQ-7: Frontend (React + D3)
+
+FGQ-7.1 | Credit heatmap
+
+Desc: Map by county/state; color by IRS; tooltips show trend/confidence.
+
+AC: Zoom, filter by sector; <2s initial load.
+
+FGQ-7.2 | Issuer detail view
+
+Desc: Score gauge, sparkline, top drivers (with clickable citations), disclosure list, peer compare.
+
+AC: Pagination; open document preview to exact page.
+
+FGQ-7.3 | Graph explorer
+
+Desc: Interactive network (issuer-obligor-project-security); edge thickness by α_ij.
+
+AC: Smooth pan/zoom on 1k nodes demo.
+
+EPIC FGQ-8: Security, Compliance, & MRM
+
+FGQ-8.1 | RBAC & scopes
+
+Desc: Roles for admin, analyst, API-client; per-route scopes.
+
+AC: Security tests pass; JWT validated.
+
+FGQ-8.2 | Encryption & PII review
+
+Desc: TLS everywhere; at-rest encryption; privacy review (should be minimal for public docs).
+
+AC: Pen-test low findings; CIS benchmark > 90% pass.
+
+FGQ-8.3 | Model Risk Management (MRM) pack
+
+Desc: Document methodology, data lineage, monitoring, challenger model plan.
+
+AC: PDF delivered; signed off internally.
+
+EPIC FGQ-9: Ops, Monitoring & Cost
+
+FGQ-9.1 | Observability
+
+Desc: Prometheus metrics, Grafana dashboards, traces (OTel).
+
+AC: SLOs: API p95 < 300ms, 99.5% uptime in prod.
+
+FGQ-9.2 | Auto-scaling & costs
+
+Desc: HPA on CPU/queue depth; S3 lifecycle policies.
+
+AC: Load test at 10x baseline without error spikes.
+
+EPIC FGQ-10: MVP Study & Benchmarks
+
+FGQ-10.1 | Issuer cohort & labels
+
+Desc: Select 100 issuers; assemble 24-month disclosure set; define event labels (rating changes / spread moves).
+
+AC: Gold dataset versioned; ready for training.
+
+FGQ-10.2 | Lead-time evaluation
+
+Desc: Compare FinGraphIQ signals vs. rating action dates; measure precision/recall by lead window (30/60/90d).
+
+AC: Report shows ≥0.70 precision on direction and measurable lead days.
+
+FGQ-10.3 | Case studies (3)
+
+Desc: Produce narrative deep dives with charts & citations to documents.
+
+AC: PDF case studies suitable for sales & MRM.
+
+Data Model (minimum viable)
+
+PostgreSQL (structured)
+
+documents(doc_id, issuer_id, source_url, type, fis_year, sha256, stored_at, ocr_status, meta jsonb)
+
+metrics(issuer_id, asof, dsc, fund_balance_ratio, pension_liab_pct, rev_growth, …, provenance jsonb)
+
+scores(issuer_id, asof, irs, trend, conf, drivers jsonb, model_hash)
+
+manifests(doc_id, part, sha256, bytes)
+
+Neo4j (graph)
+
+Nodes: Issuer{id, name, state, sector}, Obligor{id, name, sector}, Project{id, name, kind}, Security{cusip, coupon, mat, call}
+
+Edges: (:Issuer)-[:ISSUES]->(:Security), (:Issuer)-[:GUARANTEES {alpha}]->(:Obligor), (:Obligor)-[:OPERATES]->(:Project), (:Project)-[:FINANCED_BY]->(:Security), (:Issuer)-[:FINANCES {alpha}]->(:Project)
+
+Key Formulas (for dev notes)
+
+Composite score:
+IRS_i = σ( w_f·f(F_i) + w_g·g(G_i) + w_t·h(T_i) )
+where F_i = tabular features, G_i = GNN embedding with dependency weights α_ij, T_i = text embedding; σ maps to 0–100.
+
+Graph propagation:
+G_i = Σ_{j∈N(i)} α_ij · H_j, with H_j neighbor representations.
+
+Latent expected loss framing (for docs):
+EL = PD × EAD × (1 – RR), with continuous PD_t = f(Disclosure_t, Graph_t, Sentiment_t).
+
+Acceptance Benchmarks (MVP)
+
+Docs → Metrics extraction accuracy (10 key ratios): ≥ 90%
+
+Directional credit drift precision (holdout): ≥ 0.70
+
+Score refresh latency on new filing: ≤ 5 minutes end-to-end (doc arrival → score)
+
+UI initial load under typical dataset: < 2 seconds (p95)
+
+Audit pack generation: ≤ 5 seconds per issuer
+
+Sample “Definition of Done” (applies to all stories)
+
+Unit tests ≥ 80% for service; integration tests for critical paths
+
+Security scan clean or justified
+
+Observability (metrics, logs, traces) added
+
+API documented (OpenAPI), examples included
+
+Data contracts versioned; migrations tested
+
+Provenance captured for every model-visible field
+
+Fast start for the coding agent
+
+Start with FGQ-1.1/1.2 to hydrate PDFs & samples (EMMA, SEC). 
+MSRB
++1
+
+Implement FGQ-2.2/2.3 (tabular extraction + validation) on that corpus.
+
+Wire FGQ-3.1/3.2 (Neo4j schema + upserts) and FGQ-4.2 (baseline XGBoost) using dummy labels (e.g., proxy spread moves).
+
+Expose FGQ-6.1 APIs and a simple FGQ-7.2 issuer page.
+
+Add FGQ-5.1/5.2 for explainability and citations.
+
+Measure first FGQ-10.2 lead-time on a tiny cohort; iterate.
