@@ -25,9 +25,7 @@ class Neo4jClient:
             logger.error("Neo4j connectivity check failed", error=str(e))
             return False
 
-    def execute_query(
-        self, query: str, parameters: Dict[str, Any] = None
-    ) -> List[Dict]:
+    def execute_query(self, query: str, parameters: Dict[str, Any] = None) -> List[Dict]:
         """Execute a Cypher query"""
         with self.driver.session() as session:
             result = session.run(query, parameters or {})

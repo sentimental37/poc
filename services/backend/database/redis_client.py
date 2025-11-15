@@ -8,9 +8,7 @@ logger = structlog.get_logger()
 
 class RedisClient:
     def __init__(self, host: str, port: int, password: str, db: int = 0):
-        self.client = redis.Redis(
-            host=host, port=port, password=password, db=db, decode_responses=True
-        )
+        self.client = redis.Redis(host=host, port=port, password=password, db=db, decode_responses=True)
         logger.info("Redis client initialized", host=host, port=port)
 
     def ping(self) -> bool:

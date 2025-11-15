@@ -12,9 +12,7 @@ Base = declarative_base()
 class PostgresDatabase:
     def __init__(self, connection_string: str):
         self.engine = create_engine(connection_string, pool_pre_ping=True)
-        self.SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=self.engine
-        )
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
     def get_db(self) -> Generator:
         """Get database session"""
@@ -35,8 +33,6 @@ class PostgresDatabase:
         logger.info("Database tables dropped")
 
 
-def get_connection_string(
-    host: str, port: int, db: str, user: str, password: str
-) -> str:
+def get_connection_string(host: str, port: int, db: str, user: str, password: str) -> str:
     """Generate PostgreSQL connection string"""
     return f"postgresql://{user}:{password}@{host}:{port}/{db}"
