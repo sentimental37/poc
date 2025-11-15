@@ -1,6 +1,7 @@
-from neo4j import GraphDatabase
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 import structlog
+from neo4j import GraphDatabase
 
 logger = structlog.get_logger()
 

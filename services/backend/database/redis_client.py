@@ -1,6 +1,7 @@
-import redis
-from typing import Optional, Any
 import json
+from typing import Any, Optional
+
+import redis
 import structlog
 
 logger = structlog.get_logger()
