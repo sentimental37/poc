@@ -1,9 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic_settings import BaseSettings
-import structlog
-
-logger = structlog.get_logger()
 
 
 class Settings(BaseSettings):
@@ -12,21 +9,21 @@ class Settings(BaseSettings):
     debug: bool = True
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    
+
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "munilens"
     postgres_user: str = "munilens"
     postgres_password: str = "munilens_dev_password"
-    
+
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "neo4j_dev_password"
-    
+
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_password: str = "redis_dev_password"
-    
+
     class Config:
         env_file = ".env"
 
@@ -78,13 +75,13 @@ async def api_status():
         "graph_db": "not_configured",
         "cache": "not_configured",
     }
-    
-    
+
     return status
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "main:app",
         host=settings.api_host,
