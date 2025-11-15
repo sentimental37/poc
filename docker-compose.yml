@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: munilens-postgres
+    environment:
+      POSTGRES_DB: munilens
+      POSTGRES_USER: munilens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-munilens_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U munilens"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - munilens-network
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: munilens-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-neo4j_dev_password}
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*,gds.*
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 2G
+      NEO4J_dbms_memory_pagecache_size: 1G
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_plugins:/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p ${NEO4J_PASSWORD:-neo4j_dev_password} 'RETURN 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - munilens-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: munilens-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_dev_password}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - munilens-network
+
+  # Airflow services (optional, can be started separately)
+  # airflow-webserver:
+  #   image: apache/airflow:2.7.3-python3.11
+  #   container_name: munilens-airflow-webserver
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   environment:
+  #     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+  #     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://munilens:${POSTGRES_PASSWORD:-munilens_dev_password}@postgres/airflow
+  #     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://munilens:${POSTGRES_PASSWORD:-munilens_dev_password}@postgres/airflow
+  #     AIRFLOW__CELERY__BROKER_URL: redis://:${REDIS_PASSWORD:-redis_dev_password}@redis:6379/0
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #     - ./logs:/opt/airflow/logs
+  #     - ./plugins:/opt/airflow/plugins
+  #   networks:
+  #     - munilens-network
+
+volumes:
+  postgres_data:
+    driver: local
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+  neo4j_plugins:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  munilens-network:
+    driver: bridge

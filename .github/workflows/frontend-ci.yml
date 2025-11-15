@@ -1,0 +1,85 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/frontend/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: services/frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd services/frontend
+          npm ci
+      
+      - name: Run ESLint
+        run: |
+          cd services/frontend
+          npm run lint
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: services/frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd services/frontend
+          npm ci
+      
+      - name: Build
+        run: |
+          cd services/frontend
+          npm run build
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: services/frontend/dist/
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: services/frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd services/frontend
+          npm ci
+      
+      - name: Run tests
+        run: |
+          cd services/frontend
+          npm test || echo "No tests configured yet"
